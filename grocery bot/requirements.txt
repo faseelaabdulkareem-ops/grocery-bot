@@ -1,0 +1,8 @@
+Flask==3.0.3
+gunicorn==22.0.0
+requests==2.32.3
+twilio==9.3.7
+google-genai==0.3.0
+gTTS==2.5.4
+notion-client==2.2.1
+python-dotenv==1.0.1
