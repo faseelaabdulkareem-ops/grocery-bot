@@ -1,17 +1,14 @@
 import os
 import json
 import logging
-import tempfile
 import urllib.parse
-import uuid
 from datetime import datetime
 
 import requests
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from twilio.rest import Client as TwilioClient
 from twilio.base.exceptions import TwilioRestException
-from gtts import gTTS
 from notion_client import Client as NotionClient
 from google import genai
 
@@ -35,11 +32,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
-PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "")
 HF_WHISPER_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
-
-AUDIO_DIR = os.path.join(tempfile.gettempdir(), "grocery_bot_audio")
-os.makedirs(AUDIO_DIR, exist_ok=True)
 
 
 def get_twilio_client():
@@ -217,16 +210,6 @@ def send_whatsapp_text(to_number, body):
     )
 
 
-def send_whatsapp_audio(to_number, media_url, body=""):
-    client = get_twilio_client()
-    return client.messages.create(
-        from_=TWILIO_WHATSAPP_NUMBER,
-        to=to_number,
-        body=body,
-        media_url=[media_url],
-    )
-
-
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
@@ -312,27 +295,12 @@ def send_menu_audio():
         )
 
         try:
-            tts = gTTS(text=hindi_text, lang="hi")
-            filename = f"menu_{date_str}_{uuid.uuid4().hex[:8]}.mp3"
-            file_path = os.path.join(AUDIO_DIR, filename)
-            tts.save(file_path)
-        except Exception as e:
-            logger.exception("gTTS failed: %s", e)
-            return jsonify({"error": "tts failed"}), 502
-
-        if not PUBLIC_BASE_URL:
-            logger.error("PUBLIC_BASE_URL not set — Twilio cannot fetch the audio.")
-            return jsonify({"error": "PUBLIC_BASE_URL not configured"}), 500
-
-        media_url = f"{PUBLIC_BASE_URL.rstrip('/')}/audio/{filename}"
-
-        try:
-            send_whatsapp_audio(COOK_WHATSAPP_NUMBER, media_url, body="Kal ka menu")
+            send_whatsapp_text(COOK_WHATSAPP_NUMBER, hindi_text)
         except TwilioRestException as e:
-            logger.exception("Twilio audio send failed: %s", e)
+            logger.exception("Twilio send failed: %s", e)
             return jsonify({"error": "whatsapp send failed"}), 502
 
-        return jsonify({"ok": True, "audio_url": media_url, "text": hindi_text})
+        return jsonify({"ok": True, "text": hindi_text})
     except Exception as e:
         logger.exception("Unhandled error in /send-menu-audio: %s", e)
         return jsonify({"error": "internal error"}), 500
@@ -367,11 +335,6 @@ def order_confirmed():
     except Exception as e:
         logger.exception("Unhandled error in /order-confirmed: %s", e)
         return jsonify({"error": "internal error"}), 500
-
-
-@app.route("/audio/<path:filename>", methods=["GET"])
-def serve_audio(filename):
-    return send_from_directory(AUDIO_DIR, filename, mimetype="audio/mpeg")
 
 
 if __name__ == "__main__":
