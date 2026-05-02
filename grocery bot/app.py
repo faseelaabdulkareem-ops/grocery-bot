@@ -54,42 +54,43 @@ def get_notion_client():
     return NotionClient(auth=NOTION_API_KEY)
 
 
-def _notion_property_text(prop):
-    """Extract a plain string from a Notion property, regardless of its type."""
-    if not prop:
-        return ""
-    ptype = prop.get("type")
-    if ptype == "title":
-        return "".join(t.get("plain_text", "") for t in prop.get("title", []))
-    if ptype == "rich_text":
-        return "".join(t.get("plain_text", "") for t in prop.get("rich_text", []))
-    if ptype == "select":
-        sel = prop.get("select") or {}
-        return sel.get("name", "") or ""
-    if ptype == "multi_select":
-        return ", ".join(s.get("name", "") for s in prop.get("multi_select", []))
-    return ""
-
-
 def fetch_menu_for_date(date_str):
-    """Return dict with breakfast/lunch/dinner/notes for the given YYYY-MM-DD row."""
+    """Return dict with breakfast/lunch/dinner for the given YYYY-MM-DD row."""
     if not NOTION_DATABASE_ID:
         raise RuntimeError("NOTION_DATABASE_ID not configured.")
     notion = get_notion_client()
     response = notion.databases.query(
         database_id=NOTION_DATABASE_ID,
-        filter={"property": "Date", "date": {"equals": date_str}},
+        filter={"property": "date", "title": {"equals": date_str}},
         page_size=1,
     )
     results = response.get("results", [])
     if not results:
         return None
-    props = results[0].get("properties", {})
+    row = results[0]
+
+    try:
+        date_value = row["properties"]["date"]["title"][0]["text"]["content"]
+    except (KeyError, IndexError, TypeError):
+        date_value = ""
+    try:
+        breakfast = row["properties"]["breakfast"]["rich_text"][0]["text"]["content"]
+    except (KeyError, IndexError, TypeError):
+        breakfast = ""
+    try:
+        lunch = row["properties"]["lunch"]["rich_text"][0]["text"]["content"]
+    except (KeyError, IndexError, TypeError):
+        lunch = ""
+    try:
+        dinner = row["properties"]["dinner"]["rich_text"][0]["text"]["content"]
+    except (KeyError, IndexError, TypeError):
+        dinner = ""
+
     return {
-        "breakfast": _notion_property_text(props.get("Breakfast")).strip(),
-        "lunch": _notion_property_text(props.get("Lunch")).strip(),
-        "dinner": _notion_property_text(props.get("Dinner")).strip(),
-        "notes": _notion_property_text(props.get("Special Notes")).strip(),
+        "date": date_value,
+        "breakfast": breakfast,
+        "lunch": lunch,
+        "dinner": dinner,
     }
 
 
